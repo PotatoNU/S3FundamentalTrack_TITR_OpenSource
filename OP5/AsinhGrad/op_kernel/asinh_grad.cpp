@@ -8,8 +8,8 @@ template<> struct Map<int8_t> {using type = half;};
 template <typename TYPE_Y, typename TYPE_DY, typename TYPE_Z> 
 class KernelAsinhGrad_Fast 
 {
-    using T = TYPE_Y;           
-public:     
+    using T = TYPE_Y;                
+public:      
     __aicore__ inline KernelAsinhGrad_Fast() {}    
     __aicore__ inline void Init(GM_ADDR y, GM_ADDR dy, GM_ADDR z,
                                 uint16_t block_size, uint32_t core_size){       
@@ -28,7 +28,7 @@ public:
         }       
     }   
     __aicore__ inline void Process()   
-    {           
+    {            
         int32_t loopCount = this->tileNum;
         for (int32_t i = 0; i < loopCount - 1; i++){
             CopyIn(i, this->tileLength); 
@@ -99,8 +99,6 @@ private:
     uint16_t tileLength;  
 };
   
-// 6行 4变量 原始公式—>两行fp16计算->最快,但官方1/x精度不够 
-// 6行 5变量 原始公式—>两行fp16计算 
 template <typename TYPE_Y, typename TYPE_DY, typename TYPE_Z>   
 class KernelAsinhGrad_Fast_Fast_V7
 {                   
@@ -141,9 +139,8 @@ private:
         Q_y.EnQue(y);              
         y = Q_y.DeQue<half>();    
         Cast(tmpy, y, RoundMode::CAST_NONE, length);     
-        /*核心计算->五行 常规计算->六行*/ 
+
         Exp(tmpy, tmpy, length);              
-        // Reciprocal(tmpdy, tmpy, length);     //分子问题难解决->官方精度不够 
         Div(tmpdy, tmp025, tmpy, length);          
         AddReluCast(y, tmpdy, tmpy, length);     
         dy = Q_dy.AllocTensor<half>(); 
@@ -151,7 +148,7 @@ private:
         Q_dy.EnQue(dy);     
         dy = Q_dy.DeQue<half>();  
         Div(dy, dy, y, length); 
-        Add(dy, dy, dy, length);          
+        Add(dy, dy, dy, length);           
         
         Q_y.FreeTensor(y);            
         Q_dy.EnQue<half>(dy);                
@@ -164,9 +161,9 @@ private:
     TPipe* pipe;  
     TQue<QuePosition::VECIN, 2> Q_y;        
     TQue<QuePosition::VECOUT, 2> Q_dy;                              
-    TBuf<QuePosition::VECCALC> tmpYBuffer, tmpDYBuffer;         
+    TBuf<QuePosition::VECCALC> tmpYBuffer, tmpDYBuffer, tmp025YBuffer;         
     LocalTensor<half> y, dy;         
-    LocalTensor<float> tmpy, tmpdy;                        
+    LocalTensor<float> tmpy, tmpdy, tmp025;                         
     GlobalTensor<half> Gm_y, Gm_dy, Gm_z;        
     uint32_t index;  
     uint32_t blockLength;               
@@ -175,9 +172,7 @@ private:
 
 extern "C" __global__ __aicore__ void asinh_grad(GM_ADDR y, GM_ADDR dy, GM_ADDR z, GM_ADDR workspace, GM_ADDR tiling) 
 {       
-    if(TILING_KEY_IS(1)){       
-        /*Note: UB空间已塞满, 计算6行实现, 无Tiling传输, 差10us  2024/11/26   
-        /*5个中间变量->搬移次数更多-> 本地：979.770813 官方：977.15 Pass*/                 
+    if(TILING_KEY_IS(1)){                    
         GET_TILING_DATA(tiling_data, tiling);     
         TPipe pipe;                                                                  
         KernelAsinhGrad_Fast_Fast_V7<DTYPE_Y, DTYPE_DY, DTYPE_Z> op;                   
